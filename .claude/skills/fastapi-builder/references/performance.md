@@ -60,7 +60,7 @@ async def bad_example():
 from sqlmodel import create_engine
 
 engine = create_engine(
-    DATABASE_URL,
+    settings.database_url,
     pool_size=5,          # Number of permanent connections
     max_overflow=10,      # Max additional connections
     pool_timeout=30,      # Wait time for connection
@@ -86,7 +86,7 @@ elif settings.environment == "development":
         "echo": True,  # Log queries
     }
 
-engine = create_engine(DATABASE_URL, **pool_config)
+engine = create_engine(settings.database_url, **pool_config)
 ```
 
 ### Eager Loading (Avoid N+1)

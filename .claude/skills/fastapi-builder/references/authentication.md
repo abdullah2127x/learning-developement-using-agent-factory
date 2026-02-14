@@ -32,16 +32,15 @@ pip install argon2-cffi                  # Argon2 (recommended)
 
 ```python
 # app/config.py
+from pydantic import ConfigDict
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
-    # Generate with: openssl rand -hex 32
-    secret_key: str = "your-secret-key-keep-this-secret"
+    model_config = ConfigDict(env_file=".env", extra="ignore")
+    # Generate SECRET_KEY with: openssl rand -hex 32
+    secret_key: str                        # loaded from SECRET_KEY in .env — required, no default
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
-
-    class Config:
-        env_file = ".env"
 
 settings = Settings()
 ```
@@ -541,19 +540,17 @@ async def login(request: Request, ...):
 ### 4. Token Expiration
 
 ```python
-# Short-lived access tokens
-ACCESS_TOKEN_EXPIRE_MINUTES = 30  # 30 minutes
-
-# Long-lived refresh tokens
-REFRESH_TOKEN_EXPIRE_DAYS = 30  # 30 days
+# Configure expiry in Settings/env — never hardcode
+# ACCESS_TOKEN_EXPIRE_MINUTES: set via .env or Settings default
+# REFRESH_TOKEN_EXPIRE_DAYS: set via .env or Settings default
 
 # Include issued-at time in token
 def create_access_token(data: dict):
     to_encode = data.copy()
     now = datetime.now(timezone.utc)
-    expire = now + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    expire = now + timedelta(minutes=settings.access_token_expire_minutes)
     to_encode.update({"exp": expire, "iat": now})
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
 ```
 
 ### 5. Response Model Security

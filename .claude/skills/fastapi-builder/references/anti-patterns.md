@@ -16,16 +16,16 @@ API_KEY = "abc123"
 ### ✅ Use Environment Variables
 
 ```python
-# GOOD: Use environment variables
+# GOOD: Use environment variables with Pydantic v2 Settings
 from pydantic_settings import BaseSettings
+from pydantic import ConfigDict
 
 class Settings(BaseSettings):
+    model_config = ConfigDict(env_file=".env", extra="ignore")
+
     secret_key: str
     database_url: str
     api_key: str
-
-    class Config:
-        env_file = ".env"
 
 settings = Settings()
 ```
@@ -394,16 +394,16 @@ async def create_user(user: UserCreate, session: SessionDep):
 ### ❌ No Connection Pooling
 
 ```python
-# BAD: New connection every time
-engine = create_engine(DATABASE_URL)  # No pool config
+# BAD: New connection every time with hardcoded URL
+engine = create_engine(DATABASE_URL)  # No pool config, bare constant
 ```
 
 ### ✅ Configure Connection Pool
 
 ```python
-# GOOD: Reuses connections
+# GOOD: Reuses connections via Settings
 engine = create_engine(
-    DATABASE_URL,
+    settings.database_url,
     pool_size=5,
     max_overflow=10,
     pool_pre_ping=True

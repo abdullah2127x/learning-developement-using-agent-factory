@@ -210,13 +210,14 @@ uv sync
 **Fix**: Use `postgresql+psycopg://` not `postgresql://`
 
 ```python
-# ✅ Correct (Pydantic v3+, SQLModel)
+# ✅ Correct — feed from settings, never hardcode the URL
 engine = create_engine(
-    "postgresql+psycopg://user:pass@localhost/db",
-    echo=True
+    settings.database_url,
+    echo=settings.debug,
+    pool_pre_ping=True
 )
 
-# ❌ Wrong (old psycopg2)
+# ❌ Wrong — hardcoded URL, ignores .env
 engine = create_engine(
     "postgresql://user:pass@localhost/db"
 )
@@ -458,9 +459,17 @@ class HeroPublic(SQLModel):
 from typing import Annotated
 from sqlmodel import Session, create_engine
 from fastapi import Depends
+from pydantic import ConfigDict
+from pydantic_settings import BaseSettings
 
-DATABASE_URL = "postgresql+psycopg://user:password@localhost/dbname"
-engine = create_engine(DATABASE_URL, echo=True)
+class Settings(BaseSettings):
+    model_config = ConfigDict(env_file=".env", extra="ignore")
+    database_url: str        # loaded from DATABASE_URL in .env — no default = required
+    debug: bool = False      # loaded from DEBUG in .env — defaults to False
+
+settings = Settings()
+
+engine = create_engine(settings.database_url, echo=settings.debug, pool_pre_ping=True)
 
 def get_session():
     with Session(engine) as session:
@@ -503,10 +512,16 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 from passlib.context import CryptContext
+from pydantic import ConfigDict
+from pydantic_settings import BaseSettings
 
-SECRET_KEY = "your-secret-key"  # Use environment variable
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+class Settings(BaseSettings):
+    model_config = ConfigDict(env_file=".env", extra="ignore")
+    secret_key: str                        # loaded from SECRET_KEY in .env — required, no default
+    algorithm: str = "HS256"
+    access_token_expire_minutes: int = 30
+
+settings = Settings()
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
@@ -523,7 +538,7 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
 
 async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]):
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
         username: str = payload.get("sub")
         if username is None:
             raise HTTPException(status_code=401, detail="Invalid token")

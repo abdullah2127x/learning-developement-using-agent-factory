@@ -4,14 +4,13 @@ from fastapi import Depends, FastAPI, HTTPException, Query, status
 from sqlmodel import Field, Session, SQLModel, create_engine, select
 from pydantic_settings import BaseSettings
 from pydantic import ConfigDict
-import os
 
 # Settings
 class Settings(BaseSettings):
     model_config = ConfigDict(env_file=".env", extra="ignore")
 
-    database_url: str = os.getenv("DATABASE_URL", "postgresql+psycopg://localhost/students")
-    debug: bool = os.getenv("DEBUG", "false").lower() == "true"
+    database_url: str
+    debug: bool = False
 
 settings = Settings()
 

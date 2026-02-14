@@ -34,17 +34,23 @@ pip install alembic
 ```python
 # app/database.py
 from sqlmodel import SQLModel, create_engine, Session
+from pydantic import ConfigDict
+from pydantic_settings import BaseSettings
 
-# PostgreSQL connection string
-DATABASE_URL = "postgresql+psycopg://user:password@localhost:5432/dbname"
+class Settings(BaseSettings):
+    model_config = ConfigDict(env_file=".env", extra="ignore")
+    database_url: str        # loaded from DATABASE_URL in .env — required, no default
+    debug: bool = False      # loaded from DEBUG in .env
 
-# Create engine
+settings = Settings()
+
+# Create engine — fed from settings, never hardcoded
 engine = create_engine(
-    DATABASE_URL,
-    echo=True,  # Log SQL queries (disable in production)
-    pool_pre_ping=True,  # Verify connections before using
-    pool_size=5,  # Connection pool size
-    max_overflow=10  # Max connections beyond pool_size
+    settings.database_url,
+    echo=settings.debug,
+    pool_pre_ping=True,
+    pool_size=5,
+    max_overflow=10
 )
 
 def create_db_and_tables():
@@ -86,14 +92,20 @@ app = FastAPI(lifespan=lifespan)
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+from pydantic import ConfigDict
+from pydantic_settings import BaseSettings
 
-# Async PostgreSQL connection string
-DATABASE_URL = "postgresql+asyncpg://user:password@localhost:5432/dbname"
+class Settings(BaseSettings):
+    model_config = ConfigDict(env_file=".env", extra="ignore")
+    database_url: str        # loaded from DATABASE_URL in .env — use asyncpg format for async
+    debug: bool = False
 
-# Create async engine
+settings = Settings()
+
+# Create async engine — fed from settings, never hardcoded
 async_engine = create_async_engine(
-    DATABASE_URL,
-    echo=True,
+    settings.database_url,
+    echo=settings.debug,
     future=True,
     pool_size=5,
     max_overflow=10
@@ -394,7 +406,7 @@ from sqlmodel import create_engine
 from sqlalchemy.pool import QueuePool
 
 engine = create_engine(
-    DATABASE_URL,
+    settings.database_url,
     poolclass=QueuePool,
     pool_size=5,          # Number of connections to maintain
     max_overflow=10,      # Max connections beyond pool_size
@@ -412,7 +424,7 @@ from app.config import settings
 
 if settings.environment == "production":
     engine = create_engine(
-        DATABASE_URL,
+        settings.database_url,
         pool_size=20,
         max_overflow=40,
         pool_pre_ping=True,
@@ -427,7 +439,7 @@ elif settings.environment == "testing":
     )
 else:  # development
     engine = create_engine(
-        DATABASE_URL,
+        settings.database_url,
         pool_size=5,
         echo=True  # Log queries in dev
     )
