@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__context7__query-docs",
+      "mcp__context7__resolve-library-id",
+      "WebFetch(domain:gsap.com)",
+      "Bash(dir:*)",
+      "WebFetch(domain:react-hook-form.com)",
+      "WebSearch",
+      "WebFetch(domain:mongoosejs.com)",
+      "WebFetch(domain:redux-toolkit.js.org)",
+      "WebFetch(domain:authjs.dev)",
+      "WebFetch(domain:www.sanity.io)"
+    ]
+  }
+}
