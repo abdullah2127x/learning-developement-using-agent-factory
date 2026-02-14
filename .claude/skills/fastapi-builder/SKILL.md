@@ -46,7 +46,226 @@ Only ask user for THEIR specific requirements (domain expertise is in this skill
 
 ---
 
-## Core Implementation Workflow
+## Pre-Implementation Environment Setup
+
+**CRITICAL**: Execute these steps BEFORE writing any code to prevent common errors:
+
+### 1. Dependency Synchronization (If using uv)
+
+If the project uses `uv` package manager:
+
+```bash
+uv sync
+```
+
+**Why**: Ensures all dependencies (including transitive) are correctly installed and versions match `pyproject.toml` and `uv.lock`.
+
+**Common Error**: `pydantic-core` version mismatch if skipped.
+
+**When to run**:
+- After first clone/setup
+- After modifying `pyproject.toml`
+- Before running tests or starting development
+- After any dependency-related error
+
+### 2. Pydantic v2 Configuration (MANDATORY)
+
+**Current requirement**: Use Pydantic v2+ with `ConfigDict` (NOT deprecated class-based config).
+
+**Correct pattern for Settings/BaseModel with environment variables:**
+
+```python
+from pydantic import ConfigDict
+from pydantic_settings import BaseSettings
+
+# ✅ CORRECT - Pydantic v2
+class Settings(BaseSettings):
+    model_config = ConfigDict(env_file=".env", extra="ignore")
+
+    database_url: str
+    debug: bool = False
+
+# ❌ WRONG - Pydantic v1 (deprecated)
+class Settings(BaseSettings):
+    class Config:
+        env_file = ".env"
+```
+
+**Why `extra="ignore"`**: Allows `.env` files with extra variables that aren't defined in your Settings class. Prevents validation errors when other tools (API_KEY, MAX_CONNECTIONS) are in the same `.env`.
+
+**When you need this**: Every time you load from `.env` or environment variables.
+
+### 3. Platform Compatibility Checks
+
+**Python 3.12+ Required**: Verify before starting:
+
+```bash
+python --version
+# Should show: Python 3.12.x or higher
+```
+
+**Windows-Specific Issue - Unicode in CLI scripts**:
+
+If writing scripts that output to console:
+- ❌ DON'T use Unicode characters: `✓`, `✅`, `❌`, `→`
+- ✅ DO use ASCII-safe alternatives: `[PASS]`, `[SUCCESS]`, `[ERROR]`, `->`
+
+**Why**: Windows console (cp1252) doesn't support full Unicode by default. Cross-platform scripts must use ASCII.
+
+**Quick test**:
+```python
+print("[PASS] Health check")  # ✅ Works on Windows
+print("✓ Health check")       # ❌ May fail on Windows
+```
+
+### 4. Database URL Format (If using PostgreSQL)
+
+**CRITICAL**: Use `psycopg` (v3) driver, NOT `psycopg2`:
+
+```python
+# ✅ CORRECT - SQLModel with psycopg (v3)
+DATABASE_URL = "postgresql+psycopg://user:password@localhost/dbname"
+
+# ❌ WRONG - Uses old psycopg2
+DATABASE_URL = "postgresql://user:password@localhost/dbname"
+```
+
+If using Neon or cloud PostgreSQL, ensure URL format:
+```
+postgresql+psycopg://user:password@host:5432/dbname?sslmode=require
+```
+
+### Pre-Implementation Checklist
+
+Before writing ANY code:
+
+- [ ] Environment synced (`uv sync` if applicable)
+- [ ] Python 3.12+ installed
+- [ ] `.env` file created with required variables (DATABASE_URL, DEBUG, etc.)
+- [ ] Testing environment set up (pytest installed, TestClient available)
+- [ ] Pydantic v2 ConfigDict pattern understood (for Settings/BaseModel)
+- [ ] If Windows development: No Unicode in CLI scripts planned
+- [ ] If using PostgreSQL: psycopg (not psycopg2) configured
+
+---
+
+## Common Pitfalls & Prevention
+
+### Pitfall 1: Pydantic Settings Validation Errors
+
+**Error**: `ValidationError: Extra inputs are not permitted [type=extra_forbidden]`
+
+**Cause**: Settings class doesn't define fields that exist in `.env`
+
+**Fix**:
+```python
+# Add this to your Settings class
+model_config = ConfigDict(env_file=".env", extra="ignore")
+```
+
+**Better yet**: Only define fields you'll actually use in Settings, delete unused ones from `.env`.
+
+---
+
+### Pitfall 2: Windows Unicode Encoding Errors
+
+**Error**: `UnicodeEncodeError: 'charmap' codec can't encode character`
+
+**Cause**: Script uses Unicode characters (✓, ✅, →) on Windows console
+
+**Fix**: Replace all Unicode in console output:
+
+| Don't Use | Use Instead |
+|-----------|-------------|
+| `✓` | `[PASS]` |
+| `✅` | `[SUCCESS]` |
+| `❌` | `[ERROR]` |
+| `→` | `->` |
+| `🔁` | `[NEXT]` |
+| `🧠` | `[NOTE]` |
+
+---
+
+### Pitfall 3: Missing `uv sync`
+
+**Error**: Various dependency version conflicts or imports failing
+
+**Cause**: Environment not synchronized with `pyproject.toml`
+
+**Fix**: Always run after setup or dependency changes:
+```bash
+uv sync
+```
+
+**When in doubt**: Run it. It's safe and idempotent.
+
+---
+
+### Pitfall 4: Incorrect Database URL Format
+
+**Error**: `sqlalchemy.exc.ArgumentError: Invalid database URL`
+
+**Cause**: Using old psycopg2 driver syntax instead of psycopg
+
+**Fix**: Use `postgresql+psycopg://` not `postgresql://`
+
+```python
+# ✅ Correct (Pydantic v3+, SQLModel)
+engine = create_engine(
+    "postgresql+psycopg://user:pass@localhost/db",
+    echo=True
+)
+
+# ❌ Wrong (old psycopg2)
+engine = create_engine(
+    "postgresql://user:pass@localhost/db"
+)
+```
+
+---
+
+### Pitfall 5: Settings Class with Unused Environment Variables
+
+**Error**: `.env` has variables your code doesn't use, causing validation failures
+
+**Cause**: Settings class validates ALL env vars against defined fields
+
+**Fix**: Use `extra="ignore"` in ConfigDict:
+
+```python
+class Settings(BaseSettings):
+    model_config = ConfigDict(
+        env_file=".env",
+        extra="ignore"  # ← This is KEY
+    )
+    database_url: str
+    debug: bool
+    # API_KEY and MAX_CONNECTIONS in .env are silently ignored
+```
+
+---
+
+### Pitfall 6: Async/Await Mistakes
+
+**Error**: `RuntimeError: no running event loop` or coroutine not awaited
+
+**Common mistake**:
+```python
+# ❌ WRONG - Forgot await
+result = get_session()  # This is a coroutine!
+
+# ✅ CORRECT - Use await
+result = await get_session()
+
+# OR for dependencies, use Depends()
+SessionDep = Annotated[Session, Depends(get_session)]
+```
+
+**Rule**: If function is `async def`, ALWAYS use `await` when calling it (except with `Depends()`).
+
+---
+
+## Implementation Workflow (After Setup)
 
 ### 1. Determine Project Scale
 
