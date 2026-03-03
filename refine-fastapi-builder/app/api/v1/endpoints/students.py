@@ -1,11 +1,12 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Request, status
 
 from app.api.dependencies import get_current_active_user, require_admin
 from app.models.user import User
 from app.schemas.student import StudentCreate, StudentPublic, StudentUpdate
 from app.services.student_service import StudentService
+from app.utils.rate_limit import limiter, READ_RATE, WRITE_RATE
 
 router = APIRouter()
 
@@ -15,7 +16,9 @@ router = APIRouter()
     response_model=list[StudentPublic],
     summary="List students",
 )
+@limiter.limit(READ_RATE)
 def list_students(
+    request: Request,
     current_user: Annotated[User, Depends(get_current_active_user)],
     student_service: StudentService = Depends(),
     offset: int = 0,
@@ -34,7 +37,9 @@ def list_students(
     response_model=StudentPublic,
     summary="Get student by ID",
 )
+@limiter.limit(READ_RATE)
 def get_student(
+    request: Request,
     student_id: int,
     current_user: Annotated[User, Depends(get_current_active_user)],
     student_service: StudentService = Depends(),
@@ -54,7 +59,9 @@ def get_student(
     status_code=status.HTTP_201_CREATED,
     summary="Create a student profile",
 )
+@limiter.limit(WRITE_RATE)
 def create_student(
+    request: Request,
     student_in: StudentCreate,
     _admin: Annotated[User, Depends(require_admin)],
     student_service: StudentService = Depends(),
@@ -68,7 +75,9 @@ def create_student(
     response_model=StudentPublic,
     summary="Update a student profile",
 )
+@limiter.limit(WRITE_RATE)
 def update_student(
+    request: Request,
     student_id: int,
     student_in: StudentUpdate,
     _admin: Annotated[User, Depends(require_admin)],
@@ -83,7 +92,9 @@ def update_student(
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete a student profile",
 )
+@limiter.limit(WRITE_RATE)
 def delete_student(
+    request: Request,
     student_id: int,
     _admin: Annotated[User, Depends(require_admin)],
     student_service: StudentService = Depends(),

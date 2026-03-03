@@ -5,7 +5,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 
 from app.schemas.user import Token, UserCreate, UserPublic
 from app.services.auth_service import AuthService
-from app.utils.rate_limit import limiter
+from app.utils.rate_limit import limiter, AUTH_RATE, SIGNUP_RATE
 
 router = APIRouter()
 
@@ -16,7 +16,7 @@ router = APIRouter()
     status_code=status.HTTP_201_CREATED,
     summary="Register a new user",
 )
-@limiter.limit("10/hour")  # Max 10 registrations per hour to prevent spam
+@limiter.limit(SIGNUP_RATE)
 def register(
     request: Request,
     user_in: UserCreate,
@@ -30,7 +30,7 @@ def register(
     response_model=Token,
     summary="Login and get access token",
 )
-@limiter.limit("5/minute")  # Max 5 login attempts per minute
+@limiter.limit(AUTH_RATE)
 def login(
     request: Request,
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],

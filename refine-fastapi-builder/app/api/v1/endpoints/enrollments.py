@@ -1,12 +1,13 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from app.api.dependencies import get_current_active_user, require_admin
 from app.models.user import User
 from app.schemas.enrollment import EnrollmentCreate, EnrollmentPublic, EnrollmentUpdate
 from app.services.enrollment_service import EnrollmentService
 from app.services.student_service import StudentService
+from app.utils.rate_limit import limiter, READ_RATE, WRITE_RATE
 
 router = APIRouter()
 
@@ -17,7 +18,9 @@ router = APIRouter()
     status_code=status.HTTP_201_CREATED,
     summary="Enroll in a course",
 )
+@limiter.limit(WRITE_RATE)
 def enroll(
+    request: Request,
     enrollment_in: EnrollmentCreate,
     current_user: Annotated[User, Depends(get_current_active_user)],
     enrollment_service: EnrollmentService = Depends(),
@@ -39,7 +42,9 @@ def enroll(
     response_model=list[EnrollmentPublic],
     summary="List enrollments",
 )
+@limiter.limit(READ_RATE)
 def list_enrollments(
+    request: Request,
     current_user: Annotated[User, Depends(get_current_active_user)],
     enrollment_service: EnrollmentService = Depends(),
     student_service: StudentService = Depends(),
@@ -62,7 +67,9 @@ def list_enrollments(
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Drop an enrollment",
 )
+@limiter.limit(WRITE_RATE)
 def drop_enrollment(
+    request: Request,
     enrollment_id: int,
     current_user: Annotated[User, Depends(get_current_active_user)],
     enrollment_service: EnrollmentService = Depends(),
@@ -85,7 +92,9 @@ def drop_enrollment(
     response_model=EnrollmentPublic,
     summary="Update enrollment (grade/status)",
 )
+@limiter.limit(WRITE_RATE)
 def update_enrollment(
+    request: Request,
     enrollment_id: int,
     enrollment_in: EnrollmentUpdate,
     _admin: Annotated[User, Depends(require_admin)],

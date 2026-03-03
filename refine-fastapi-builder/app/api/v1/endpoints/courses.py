@@ -1,11 +1,12 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Request, status
 
 from app.api.dependencies import get_current_active_user, require_admin
 from app.models.user import User
 from app.schemas.course import CourseCreate, CoursePublic, CourseUpdate
 from app.services.course_service import CourseService
+from app.utils.rate_limit import limiter, READ_RATE, WRITE_RATE
 
 router = APIRouter()
 
@@ -15,7 +16,9 @@ router = APIRouter()
     response_model=list[CoursePublic],
     summary="List all courses",
 )
+@limiter.limit(READ_RATE)
 def list_courses(
+    request: Request,
     _user: Annotated[User, Depends(get_current_active_user)],
     course_service: CourseService = Depends(),
     offset: int = 0,
@@ -30,7 +33,9 @@ def list_courses(
     response_model=CoursePublic,
     summary="Get course by ID",
 )
+@limiter.limit(READ_RATE)
 def get_course(
+    request: Request,
     course_id: int,
     _user: Annotated[User, Depends(get_current_active_user)],
     course_service: CourseService = Depends(),
@@ -45,7 +50,9 @@ def get_course(
     status_code=status.HTTP_201_CREATED,
     summary="Create a course",
 )
+@limiter.limit(WRITE_RATE)
 def create_course(
+    request: Request,
     course_in: CourseCreate,
     _admin: Annotated[User, Depends(require_admin)],
     course_service: CourseService = Depends(),
@@ -59,7 +66,9 @@ def create_course(
     response_model=CoursePublic,
     summary="Update a course",
 )
+@limiter.limit(WRITE_RATE)
 def update_course(
+    request: Request,
     course_id: int,
     course_in: CourseUpdate,
     _admin: Annotated[User, Depends(require_admin)],
@@ -74,7 +83,9 @@ def update_course(
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete a course",
 )
+@limiter.limit(WRITE_RATE)
 def delete_course(
+    request: Request,
     course_id: int,
     _admin: Annotated[User, Depends(require_admin)],
     course_service: CourseService = Depends(),
