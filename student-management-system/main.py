@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import BackgroundTasks, FastAPI
 
 from db.engine import get_session
 from db.init_db import create_tables
@@ -43,9 +43,15 @@ app.include_router(course_router)
 #     elif not api_key == "secret":
 #         return JSONResponse(status_code=403, content={"detail": "Invalid API key"})
 #     response = await call_next(request)
-#     return response
+#     return response 
+import asyncio
 
+async def send_mail():
+    print("Sending Mail...")
+    await asyncio.sleep(12)
+    print("Mail Sent!")
 
 @app.get("/")
-async def root():
+async def root(task: BackgroundTasks):
+    task.add_task(send_mail)
     return {"message": "Hello World"}
