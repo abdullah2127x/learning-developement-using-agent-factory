@@ -523,21 +523,89 @@ async def register(user_in: UserCreate, session: SessionDep):
 
 ### 3. Rate Limiting
 
+Define rate limiting logic in `utils/rate_limit.py`, then register it in `main.py` and apply to routes.
+
+**app/utils/rate_limit.py** — Central rate limiting module:
 ```python
-# Using slowapi
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+from fastapi import FastAPI, Request
 
-limiter = Limiter(key_func=get_remote_address)
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+def _get_client_ip(request: Request) -> str:
+    """Extract client IP, respecting X-Forwarded-For behind a reverse proxy."""
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return get_remote_address(request)
+
+# Singleton limiter — import this in any router that needs rate limits
+limiter = Limiter(
+    key_func=_get_client_ip,
+    default_limits=["200/minute"],       # Global fallback
+    storage_uri="memory://",             # Use "redis://localhost:6379" in production
+)
+
+# Pre-defined rate strings — keep limits in one place
+AUTH_RATE   = "5/minute"     # Login / token endpoints
+SIGNUP_RATE = "10/hour"      # Registration
+WRITE_RATE  = "30/minute"    # POST / PUT / PATCH / DELETE
+READ_RATE   = "60/minute"    # GET heavy endpoints
+
+def setup_rate_limiter(app: FastAPI) -> None:
+    """Register the limiter on the FastAPI app. Call once in main.py."""
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+```
+
+**app/main.py** — Register rate limiter at startup:
+```python
+from app.utils.rate_limit import setup_rate_limiter
+
+app = FastAPI(...)
+
+# Rate limiting (after CORS, before routers)
+setup_rate_limiter(app)
+```
+
+**app/routers/auth.py** (or `app/api/v1/endpoints/auth.py`) — Apply to auth routes:
+```python
+from fastapi import APIRouter, Request
+from app.utils.rate_limit import limiter, AUTH_RATE, SIGNUP_RATE
+
+router = APIRouter()
 
 @router.post("/token")
-@limiter.limit("5/minute")  # Max 5 login attempts per minute
+@limiter.limit(AUTH_RATE)  # 5/minute — brute-force protection
 async def login(request: Request, ...):
     # ... login logic
+
+@router.post("/register")
+@limiter.limit(SIGNUP_RATE)  # 10/hour — prevent spam accounts
+async def register(request: Request, ...):
+    # ... registration logic
 ```
+
+**app/routers/items.py** — Apply to general routes:
+```python
+from fastapi import APIRouter, Request
+from app.utils.rate_limit import limiter, WRITE_RATE, READ_RATE
+
+router = APIRouter()
+
+@router.get("/")
+@limiter.limit(READ_RATE)  # 60/minute
+async def list_items(request: Request, ...):
+    # ... list logic
+
+@router.post("/")
+@limiter.limit(WRITE_RATE)  # 30/minute
+async def create_item(request: Request, ...):
+    # ... create logic
+```
+
+> **Production note**: Switch `storage_uri` to `"redis://localhost:6379"` when running
+> multiple workers — in-memory storage is per-process and won't share counters.
 
 ### 4. Token Expiration
 

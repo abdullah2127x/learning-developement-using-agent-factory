@@ -550,6 +550,13 @@ async def call_external_api():
 - [ ] Health checks configured
 - [ ] Monitoring/metrics added
 
+### Rate Limiting
+- [ ] Rate limiter defined in `utils/rate_limit.py` with centralized rate constants
+- [ ] Redis backend for rate limits in multi-worker production (`storage_uri="redis://..."`)
+- [ ] Auth endpoints: strict limits (5/min login, 10/hr signup)
+- [ ] Write endpoints: moderate limits (30/min)
+- [ ] Read endpoints: relaxed limits (60/min) or no per-endpoint limit
+
 ### General
 - [ ] No blocking I/O in async functions
 - [ ] Connection pooling for external APIs

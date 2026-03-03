@@ -587,7 +587,7 @@ logging.root.addHandler(handler)
 - [ ] Secrets in environment variables or secrets manager
 - [ ] CORS configured with explicit origins
 - [ ] Security headers configured (X-Frame-Options, etc.)
-- [ ] Rate limiting enabled
+- [ ] Rate limiting enabled via `utils/rate_limit.py` (Redis backend for multi-worker)
 - [ ] Input validation and sanitization
 
 ### Performance

@@ -97,6 +97,9 @@ myapp/
 │   ├── models.py            # SQLModel table models
 │   ├── schemas.py           # Pydantic API models (request/response)
 │   ├── dependencies.py      # Shared dependencies (auth, etc.)
+│   ├── utils/
+│   │   ├── __init__.py
+│   │   └── rate_limit.py    # Rate limiting (slowapi setup + rate constants)
 │   └── routers/
 │       ├── __init__.py
 │       ├── users.py         # User endpoints
@@ -124,8 +127,12 @@ myapp/
 from fastapi import FastAPI
 from app.routers import users, items, auth
 from app.database import create_db_and_tables
+from app.utils.rate_limit import setup_rate_limiter
 
 app = FastAPI(title="My API", version="1.0.0")
+
+# Rate limiting
+setup_rate_limiter(app)
 
 # Include routers
 app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
@@ -237,6 +244,7 @@ myapp/
 │   └── utils/
 │       ├── __init__.py
 │       ├── email.py
+│       ├── rate_limit.py       # Rate limiting (slowapi setup + rate constants)
 │       └── validators.py
 ├── tests/
 │   ├── __init__.py
@@ -276,6 +284,7 @@ from app.core.database import create_db_and_tables
 from app.core.logging import setup_logging
 from app.config import settings
 from app.middleware import add_custom_middleware
+from app.utils.rate_limit import setup_rate_limiter
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -301,6 +310,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Rate limiting
+setup_rate_limiter(app)
 
 # Custom middleware
 add_custom_middleware(app)

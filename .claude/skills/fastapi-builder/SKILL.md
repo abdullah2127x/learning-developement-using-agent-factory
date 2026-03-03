@@ -723,7 +723,9 @@ See `references/testing.md` for authentication testing, fixtures, and coverage.
 - [ ] Hash passwords with pwdlib[argon2]
 - [ ] Validate all inputs: EmailStr for emails, Literal for enum-like fields, Field(min/max) for strings/numbers
 - [ ] Use response_model to prevent data leaks
-- [ ] Implement rate limiting for auth endpoints
+- [ ] Implement rate limiting via `utils/rate_limit.py` (auth: 5/min, signup: 10/hr, writes: 30/min, reads: 60/min)
+- [ ] Register rate limiter in `main.py` with `setup_rate_limiter(app)`
+- [ ] Use Redis storage for rate limits when running multiple workers
 - [ ] Add request size limits
 - [ ] Use Security headers (Helmet equivalent)
 
