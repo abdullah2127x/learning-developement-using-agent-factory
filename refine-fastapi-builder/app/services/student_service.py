@@ -1,8 +1,11 @@
+import structlog
 from fastapi import Depends, HTTPException, status
 
 from app.models.student import Student
 from app.repositories.student_repo import StudentRepository
 from app.schemas.student import StudentCreate, StudentUpdate
+
+logger = structlog.get_logger(__name__)
 
 
 class StudentService:
@@ -10,13 +13,16 @@ class StudentService:
         self.repo = repo
 
     def create_student(self, student_in: StudentCreate) -> Student:
+        logger.info("creating_student", user_id=student_in.user_id)
         if self.repo.get_by_user_id(student_in.user_id):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Student profile already exists for this user",
             )
         db_student = Student.model_validate(student_in)
-        return self.repo.create(db_student)
+        student = self.repo.create(db_student)
+        logger.info("student_created", student_id=student.id)
+        return student
 
     def get_student(self, student_id: int) -> Student:
         student = self.repo.get_by_id(student_id)
@@ -37,8 +43,11 @@ class StudentService:
         student = self.get_student(student_id)
         update_data = student_in.model_dump(exclude_unset=True)
         student.sqlmodel_update(update_data)
-        return self.repo.update(student)
+        updated = self.repo.update(student)
+        logger.info("student_updated", student_id=student_id)
+        return updated
 
     def delete_student(self, student_id: int) -> None:
         student = self.get_student(student_id)
         self.repo.delete(student)
+        logger.info("student_deleted", student_id=student_id)

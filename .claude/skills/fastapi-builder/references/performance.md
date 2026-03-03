@@ -449,17 +449,28 @@ Instrumentator().instrument(app).expose(app)
 
 ### Request Logging
 
+Use the `RequestLoggingMiddleware` from `app/middleware.py` (see `references/deployment.md` → Logging Configuration). It automatically logs `request_started` / `request_completed` with `request_id`, `method`, `path`, `status_code`, and `duration_ms` via structlog contextvars — no manual logger calls needed in routes.
+
 ```python
-import logging
+# app/main.py — register once
+from app.middleware import RequestLoggingMiddleware
 
-logger = logging.getLogger(__name__)
+app.add_middleware(RequestLoggingMiddleware)
+```
 
-@app.middleware("http")
-async def log_requests(request: Request, call_next):
-    logger.info(f"{request.method} {request.url}")
-    response = await call_next(request)
-    logger.info(f"Status: {response.status_code}")
-    return response
+For per-module logging in services or repositories:
+
+```python
+# app/services/order_service.py
+import structlog
+
+logger = structlog.get_logger(__name__)
+
+class OrderService:
+    def place_order(self, order_in):
+        logger.info("placing_order", item_count=len(order_in.items))
+        # ... business logic ...
+        # request_id is automatically included via contextvars
 ```
 
 ---
@@ -560,5 +571,7 @@ async def call_external_api():
 ### General
 - [ ] No blocking I/O in async functions
 - [ ] Connection pooling for external APIs
-- [ ] Logging configured appropriately
+- [ ] Structured logging via `structlog` in `app/core/logging.py` (JSON prod, console dev)
+- [ ] `RequestLoggingMiddleware` registered for request_id correlation + duration tracking
+- [ ] Per-module loggers via `structlog.get_logger(__name__)` in services/repos
 - [ ] Static files served by Nginx/CDN

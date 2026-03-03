@@ -431,7 +431,8 @@ Phase 5: Testing
 Phase 6: Production Readiness
   → Add CORS middleware
   → Implement error handlers
-  → Configure logging
+  → Configure structured logging via structlog in `app/core/logging.py`
+  → Add RequestLoggingMiddleware for request_id correlation
   → Create Dockerfile
   → Add health check endpoint
 

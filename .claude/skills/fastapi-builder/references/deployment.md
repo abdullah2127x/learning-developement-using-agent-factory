@@ -529,53 +529,201 @@ class Settings(BaseSettings):
 
 ## Logging Configuration
 
-### Structured Logging
+Uses **structlog** for structured, context-rich logging with JSON output in production and human-readable console output in development. All logging logic lives in `app/core/logging.py`.
+
+**Install**: `pip install structlog` (or add `structlog>=24.1.0` to dependencies)
+
+### Core Module (`app/core/logging.py`)
 
 ```python
 # app/core/logging.py
 import logging
 import sys
+
+import structlog
 from app.config import settings
 
-def setup_logging():
-    logging.basicConfig(
-        level=settings.log_level.upper(),
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.StreamHandler(sys.stdout)
-        ]
+
+def setup_logging() -> None:
+    """Configure structlog + stdlib logging.
+
+    - Development: colored, human-readable console output.
+    - Production:  JSON lines for log aggregation (ELK, Datadog, etc.).
+    """
+    log_level = getattr(logging, settings.log_level.upper(), logging.INFO)
+
+    # Shared processors used by both structlog and stdlib loggers
+    shared_processors: list[structlog.types.Processor] = [
+        structlog.contextvars.merge_contextvars,          # request-scoped context
+        structlog.stdlib.add_logger_name,
+        structlog.stdlib.add_log_level,
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.StackInfoRenderer(),
+        structlog.processors.format_exc_info,
+        structlog.processors.UnicodeDecoder(),
+    ]
+
+    if settings.debug:
+        # Dev: colored key=value output
+        renderer = structlog.dev.ConsoleRenderer()
+    else:
+        # Prod: JSON lines
+        renderer = structlog.processors.JSONRenderer()
+
+    structlog.configure(
+        processors=[
+            *shared_processors,
+            structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
+        ],
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        wrapper_class=structlog.stdlib.BoundLogger,
+        cache_logger_on_first_use=True,
     )
 
-# Usage in main.py
+    formatter = structlog.stdlib.ProcessorFormatter(
+        processors=[
+            structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+            renderer,
+        ],
+    )
+
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(formatter)
+
+    root = logging.getLogger()
+    root.handlers.clear()
+    root.addHandler(handler)
+    root.setLevel(log_level)
+
+    # Quiet noisy third-party loggers
+    for name in ("uvicorn.access", "sqlalchemy.engine"):
+        logging.getLogger(name).setLevel(logging.WARNING)
+
+
+def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:
+    """Get a named structlog logger. Use this instead of logging.getLogger()."""
+    return structlog.get_logger(name)
+```
+
+### Request Logging Middleware (`app/middleware.py`)
+
+Adds a unique `request_id` to every request so all logs within a request are correlated.
+
+```python
+# app/middleware.py  (add to existing middleware file)
+import time
+import uuid
+
+import structlog
+from fastapi import Request, Response
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+
+logger = structlog.get_logger("api.access")
+
+
+class RequestLoggingMiddleware(BaseHTTPMiddleware):
+    """Bind request_id, method, path to structlog context for every request."""
+
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
+        request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+        structlog.contextvars.clear_contextvars()
+        structlog.contextvars.bind_contextvars(
+            request_id=request_id,
+            method=request.method,
+            path=request.url.path,
+            client_ip=request.client.host if request.client else "unknown",
+        )
+
+        start = time.perf_counter()
+        logger.info("request_started")
+
+        try:
+            response = await call_next(request)
+        except Exception:
+            logger.exception("request_failed")
+            raise
+
+        duration_ms = round((time.perf_counter() - start) * 1000, 2)
+        logger.info(
+            "request_completed",
+            status_code=response.status_code,
+            duration_ms=duration_ms,
+        )
+        response.headers["X-Request-ID"] = request_id
+        return response
+```
+
+### Registration in `app/main.py`
+
+```python
+# app/main.py
 from app.core.logging import setup_logging
+from app.middleware import RequestLoggingMiddleware
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    setup_logging()
+    setup_logging()               # ← initialize logging first
+    create_db_and_tables()
     yield
+
+# After app creation:
+app.add_middleware(RequestLoggingMiddleware)
 ```
 
-### JSON Logging for Production
+### Using Loggers in Services / Repositories
 
 ```python
-import logging
-import json
+# app/services/user_service.py
+import structlog
 
-class JSONFormatter(logging.Formatter):
-    def format(self, record):
-        log_data = {
-            "timestamp": self.formatTime(record),
-            "level": record.levelname,
-            "message": record.getMessage(),
-            "logger": record.name,
-        }
-        if record.exc_info:
-            log_data["exception"] = self.formatException(record.exc_info)
-        return json.dumps(log_data)
+logger = structlog.get_logger(__name__)
 
-handler = logging.StreamHandler()
-handler.setFormatter(JSONFormatter())
-logging.root.addHandler(handler)
+class UserService:
+    def create_user(self, user_in):
+        logger.info("creating_user", username=user_in.username)
+        # ... business logic ...
+        logger.info("user_created", user_id=user.id)
+        return user
+```
+
+All logs from within a request automatically include `request_id`, `method`, `path`, and `client_ip` — no manual passing required.
+
+### Config Settings
+
+```python
+# app/config.py  (add these fields)
+class Settings(BaseSettings):
+    log_level: str = "info"        # critical | error | warning | info | debug
+    debug: bool = False            # True → console output, False → JSON output
+```
+
+### Environment Variables
+
+```bash
+# .env (development)
+LOG_LEVEL=debug
+DEBUG=true
+
+# .env (production)
+LOG_LEVEL=info
+# DEBUG defaults to false → JSON output
+```
+
+### Sample Output
+
+**Development** (`DEBUG=true`):
+```
+2026-03-04T10:30:00.000Z [info     ] request_started   [api.access] client_ip=127.0.0.1 method=GET path=/api/v1/users request_id=a1b2c3d4
+2026-03-04T10:30:00.012Z [info     ] fetching_users     [app.services.user_service] request_id=a1b2c3d4
+2026-03-04T10:30:00.045Z [info     ] request_completed  [api.access] duration_ms=45.12 status_code=200 request_id=a1b2c3d4
+```
+
+**Production** (`DEBUG=false`):
+```json
+{"event":"request_started","logger":"api.access","level":"info","timestamp":"2026-03-04T10:30:00.000Z","request_id":"a1b2c3d4","method":"GET","path":"/api/v1/users","client_ip":"10.0.1.5"}
+{"event":"request_completed","logger":"api.access","level":"info","timestamp":"2026-03-04T10:30:00.045Z","request_id":"a1b2c3d4","status_code":200,"duration_ms":45.12}
 ```
 
 ---
@@ -606,8 +754,9 @@ logging.root.addHandler(handler)
 - [ ] Restart policy configured
 
 ### Observability
-- [ ] Structured logging enabled
-- [ ] Log aggregation configured
+- [ ] Structured logging via `structlog` in `app/core/logging.py` (JSON output in prod)
+- [ ] `RequestLoggingMiddleware` for request_id correlation across all logs
+- [ ] Log aggregation configured (ELK, Datadog, CloudWatch, etc.)
 - [ ] Metrics endpoint added
 - [ ] Error tracking configured
 - [ ] Performance monitoring enabled

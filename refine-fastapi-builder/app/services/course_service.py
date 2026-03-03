@@ -1,8 +1,11 @@
+import structlog
 from fastapi import Depends, HTTPException, status
 
 from app.models.course import Course
 from app.repositories.course_repo import CourseRepository
 from app.schemas.course import CourseCreate, CourseUpdate
+
+logger = structlog.get_logger(__name__)
 
 
 class CourseService:
@@ -10,8 +13,11 @@ class CourseService:
         self.repo = repo
 
     def create_course(self, course_in: CourseCreate) -> Course:
+        logger.info("creating_course", name=course_in.name)
         db_course = Course.model_validate(course_in)
-        return self.repo.create(db_course)
+        course = self.repo.create(db_course)
+        logger.info("course_created", course_id=course.id)
+        return course
 
     def get_course(self, course_id: int) -> Course:
         course = self.repo.get_by_id(course_id)
@@ -29,8 +35,11 @@ class CourseService:
         course = self.get_course(course_id)
         update_data = course_in.model_dump(exclude_unset=True)
         course.sqlmodel_update(update_data)
-        return self.repo.update(course)
+        updated = self.repo.update(course)
+        logger.info("course_updated", course_id=course_id)
+        return updated
 
     def delete_course(self, course_id: int) -> None:
         course = self.get_course(course_id)
         self.repo.delete(course)
+        logger.info("course_deleted", course_id=course_id)

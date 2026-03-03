@@ -1,9 +1,12 @@
+import structlog
 from fastapi import Depends, HTTPException, status
 
 from app.models.enrollment import Enrollment
 from app.repositories.course_repo import CourseRepository
 from app.repositories.enrollment_repo import EnrollmentRepository
 from app.schemas.enrollment import EnrollmentCreate, EnrollmentUpdate
+
+logger = structlog.get_logger(__name__)
 
 
 class EnrollmentService:
@@ -16,11 +19,17 @@ class EnrollmentService:
         self.course_repo = course_repo
 
     def enroll_student(self, enrollment_in: EnrollmentCreate) -> Enrollment:
+        logger.info(
+            "enrolling_student",
+            student_id=enrollment_in.student_id,
+            course_id=enrollment_in.course_id,
+        )
         # Check duplicate enrollment
         existing = self.repo.get_by_student_and_course(
             enrollment_in.student_id, enrollment_in.course_id
         )
         if existing:
+            logger.warning("enrollment_failed", reason="duplicate")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Student is already enrolled in this course",
@@ -35,13 +44,16 @@ class EnrollmentService:
             )
         current_count = self.repo.count_by_course(enrollment_in.course_id)
         if current_count >= course.max_students:
+            logger.warning("enrollment_failed", reason="capacity_full", course_id=course.id)
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Course has reached maximum enrollment capacity",
             )
 
         db_enrollment = Enrollment.model_validate(enrollment_in)
-        return self.repo.create(db_enrollment)
+        enrollment = self.repo.create(db_enrollment)
+        logger.info("student_enrolled", enrollment_id=enrollment.id)
+        return enrollment
 
     def get_enrollment(self, enrollment_id: int) -> Enrollment:
         enrollment = self.repo.get_by_id(enrollment_id)
@@ -66,8 +78,11 @@ class EnrollmentService:
         enrollment = self.get_enrollment(enrollment_id)
         update_data = enrollment_in.model_dump(exclude_unset=True)
         enrollment.sqlmodel_update(update_data)
-        return self.repo.update(enrollment)
+        updated = self.repo.update(enrollment)
+        logger.info("enrollment_updated", enrollment_id=enrollment_id)
+        return updated
 
     def drop_enrollment(self, enrollment_id: int) -> None:
         enrollment = self.get_enrollment(enrollment_id)
         self.repo.delete(enrollment)
+        logger.info("enrollment_dropped", enrollment_id=enrollment_id)

@@ -208,7 +208,7 @@ myapp/
 │   │   ├── __init__.py
 │   │   ├── security.py      # Auth utilities
 │   │   ├── database.py      # DB connection
-│   │   └── logging.py       # Logging config
+│   │   └── logging.py       # Logging config (structlog setup)
 │   ├── models/              # Database models (SQLModel)
 │   │   ├── __init__.py
 │   │   ├── user.py
@@ -283,13 +283,13 @@ from app.api.v1.api import api_router as v1_router
 from app.core.database import create_db_and_tables
 from app.core.logging import setup_logging
 from app.config import settings
-from app.middleware import add_custom_middleware
+from app.middleware import add_custom_middleware, RequestLoggingMiddleware
 from app.utils.rate_limit import setup_rate_limiter
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    setup_logging()
+    setup_logging()                    # structlog: JSON prod, console dev
     create_db_and_tables()
     yield
     # Shutdown
@@ -310,6 +310,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Request logging (structlog request_id correlation)
+app.add_middleware(RequestLoggingMiddleware)
 
 # Rate limiting
 setup_rate_limiter(app)
