@@ -28,28 +28,4 @@
 #     """Health check endpoint."""
 #     return {"status": "healthy", "debug": settings.debug}
 
-from typing import get_type_hints
 
-def foo(a: int, b: str):
-    return a + b
-
-print(get_type_hints(foo))
-
-# from fastapi import FastAPI, Query
-
-# app = FastAPI()
-
-
-# @app.get("/items")
-# def read_items(limit: int = Query(ge=1, le=100)):
-#     return {"limit": limit}
-
-
-# @app.get("/healthy")
-# def health_check():
-#     """Health check endpoint."""
-#     return {"status": "healthy"}
-
-# @app.get("/search")
-# def search(query: str = Query("rewrewqddx",min_length=3, max_length=100)):
-#     return {"query": query}

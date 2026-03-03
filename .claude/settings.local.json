@@ -10,7 +10,15 @@
       "WebFetch(domain:mongoosejs.com)",
       "WebFetch(domain:redux-toolkit.js.org)",
       "WebFetch(domain:authjs.dev)",
-      "WebFetch(domain:www.sanity.io)"
+      "WebFetch(domain:www.sanity.io)",
+      "WebFetch(domain:docs.stripe.com)",
+      "WebFetch(domain:motion.dev)",
+      "Bash(xargs grep:*)",
+      "Bash(test:*)",
+      "Bash(mkdir:*)",
+      "WebFetch(domain:how2.sh)",
+      "WebFetch(domain:jose.authlib.org)",
+      "WebFetch(domain:www.reddit.com)"
     ]
   }
 }

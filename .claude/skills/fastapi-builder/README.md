@@ -16,7 +16,7 @@ Production-grade FastAPI skill for building APIs from hello world to enterprise 
 
 ### Core Features
 - ✅ REST API endpoints (GET, POST, PUT, PATCH, DELETE)
-- ✅ Request/response validation with Pydantic
+- ✅ Request/response validation with Pydantic (EmailStr, Literal, Field constraints)
 - ✅ Dependency injection system
 - ✅ Automatic OpenAPI docs generation
 - ✅ Async-first patterns with sync fallback
@@ -30,7 +30,7 @@ Production-grade FastAPI skill for building APIs from hello world to enterprise 
 
 ### Authentication & Security
 - ✅ JWT token generation and validation
-- ✅ Password hashing (bcrypt/argon2)
+- ✅ Password hashing (pwdlib with Argon2)
 - ✅ OAuth2 with password flow
 - ✅ Scope-based authorization
 - ✅ Refresh tokens

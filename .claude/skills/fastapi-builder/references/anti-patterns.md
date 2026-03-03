@@ -284,20 +284,33 @@ async def create_user(username: str, email: str, password: str):
     ...
 ```
 
-### ✅ Use Pydantic for Validation
+### ✅ Use Pydantic for Validation (MANDATORY Rules)
+
+**ALWAYS apply these — no exceptions:**
+
+1. **Email fields** → `EmailStr` (never plain `str`)
+2. **Enum-like strings** (role, status, grade) → `Literal["val1", "val2"]` (never plain `str`)
+3. **String inputs** (name, title) → `Field(min_length=..., max_length=...)`
+4. **Numeric inputs** (price, quantity) → `Field(ge=..., le=...)` or `Field(gt=...)`
+5. **Password fields** → `Field(min_length=8, max_length=128)`
 
 ```python
-# GOOD: Automatic validation
-from pydantic import BaseModel, EmailStr
+# GOOD: Complete validation
+from typing import Literal
+from pydantic import EmailStr
+from sqlmodel import Field, SQLModel
 
-class UserCreate(BaseModel):
-    username: str
-    email: EmailStr  # Validates email format
-    password: str
+Role = Literal["admin", "student"]
+
+class UserCreate(SQLModel):
+    username: str = Field(min_length=3, max_length=50)
+    email: EmailStr                                      # Validates email format
+    password: str = Field(min_length=8, max_length=128)  # Length enforced
+    role: Role = "student"                               # Only "admin" or "student"
 
 @app.post("/users")
 async def create_user(user: UserCreate):
-    # Already validated!
+    # Already validated — email format, role values, string lengths!
     ...
 ```
 
@@ -308,18 +321,23 @@ async def create_user(user: UserCreate):
 class Item(BaseModel):
     name: str  # Could be empty or 10,000 chars
     price: float  # Could be negative
+    status: str  # Could be "banana"
 ```
 
-### ✅ Add Field Constraints
+### ✅ Add Field Constraints + Literal Types
 
 ```python
-# GOOD: Enforced limits
-from pydantic import Field
+# GOOD: Enforced limits on every field
+from typing import Literal
+from sqlmodel import Field, SQLModel
 
-class Item(BaseModel):
+ItemStatus = Literal["active", "draft", "archived"]
+
+class Item(SQLModel):
     name: str = Field(min_length=1, max_length=100)
     price: float = Field(gt=0)  # Greater than 0
     quantity: int = Field(ge=0, le=1000)  # 0-1000
+    status: ItemStatus = "draft"  # Only allowed values
 ```
 
 ---

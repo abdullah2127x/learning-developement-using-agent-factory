@@ -124,12 +124,13 @@ statement = select(User.id, User.username, User.email)
 ### Use Indexes
 
 ```python
+from sqlalchemy import Column, String
 from sqlmodel import Field, SQLModel, Index
 
 class User(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
-    username: str = Field(index=True)  # Single column index
-    email: str = Field(index=True, unique=True)
+    username: str = Field(sa_column=Column(String(50), index=True, nullable=False))
+    email: str = Field(sa_column=Column(String(255), index=True, unique=True, nullable=False))
     team_id: int | None = Field(foreign_key="team.id", index=True)
 
     # Composite index
@@ -177,9 +178,9 @@ async def get_user(user_id: int, session: SessionDep):
 
 ```python
 class UserUpdate(BaseModel):
-    username: str | None = None
-    email: str | None = None
-    bio: str | None = None
+    username: str | None = Field(default=None, min_length=3, max_length=50)
+    email: EmailStr | None = None
+    bio: str | None = Field(default=None, max_length=500)
 
 @app.patch(
     "/users/{user_id}",

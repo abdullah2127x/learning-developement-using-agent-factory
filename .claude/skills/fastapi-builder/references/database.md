@@ -159,56 +159,64 @@ async def create_user(user: UserCreate, session: AsyncSessionDep):
 
 ```python
 # app/models/user.py
-from sqlmodel import Field, SQLModel
 from datetime import datetime
+from sqlalchemy import Column, String
+from sqlmodel import Field, SQLModel
 
-# Base model (shared fields)
-class UserBase(SQLModel):
-    username: str = Field(index=True, unique=True)
-    email: str = Field(index=True, unique=True)
-    full_name: str | None = None
-    is_active: bool = True
-
-# Table model (database)
-class User(UserBase, table=True):
+# Table model (database) — ALWAYS use sa_column for string fields
+class User(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
-    hashed_password: str
+    username: str = Field(sa_column=Column(String(50), unique=True, index=True, nullable=False))
+    email: str = Field(sa_column=Column(String(255), unique=True, index=True, nullable=False))
+    full_name: str | None = Field(sa_column=Column(String(100), nullable=True))
+    hashed_password: str = Field(sa_column=Column(String(1024), nullable=False))
+    is_active: bool = Field(default=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 # app/schemas/user.py
-from sqlmodel import SQLModel
+from pydantic import EmailStr
+from sqlmodel import Field, SQLModel
 
-# API models (request/response)
-class UserCreate(UserBase):
-    password: str  # Plain password for input
+# API models (request/response) — ALWAYS add Field constraints
+# Import Field from sqlmodel (not pydantic) — it's a superset
+class UserCreate(SQLModel):
+    username: str = Field(min_length=3, max_length=50)
+    email: EmailStr
+    full_name: str | None = Field(default=None, min_length=1, max_length=100)
+    password: str = Field(min_length=8, max_length=128)
 
-class UserPublic(UserBase):
+class UserPublic(SQLModel):
     id: int
+    username: str
+    email: str
+    full_name: str | None
+    is_active: bool
     created_at: datetime
     # Note: hashed_password excluded for security
 
 class UserUpdate(SQLModel):
-    email: str | None = None
-    full_name: str | None = None
-    password: str | None = None
+    email: EmailStr | None = None
+    full_name: str | None = Field(default=None, min_length=1, max_length=100)
+    password: str | None = Field(default=None, min_length=8, max_length=128)
 ```
 
 ### Relationships
 
 ```python
-from sqlmodel import Field, Relationship
+from sqlalchemy import Column, String
+from sqlmodel import Field, Relationship, SQLModel
 
 class Team(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
-    name: str = Field(index=True)
+    name: str = Field(sa_column=Column(String(100), index=True, nullable=False))
 
     # Relationship to users
     users: list["User"] = Relationship(back_populates="team")
 
 class User(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
-    username: str
+    username: str = Field(sa_column=Column(String(50), nullable=False))
     team_id: int | None = Field(default=None, foreign_key="team.id")
 
     # Relationship to team
@@ -221,12 +229,12 @@ class ProjectUserLink(SQLModel, table=True):
 
 class Project(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
-    name: str
+    name: str = Field(sa_column=Column(String(200), nullable=False))
     users: list["User"] = Relationship(back_populates="projects", link_model=ProjectUserLink)
 
 class User(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
-    username: str
+    username: str = Field(sa_column=Column(String(50), nullable=False))
     projects: list[Project] = Relationship(back_populates="users", link_model=ProjectUserLink)
 ```
 
@@ -600,10 +608,13 @@ def list_users(
 ### 3. Indexes
 
 ```python
+from sqlalchemy import Column, String
+from sqlmodel import Field, SQLModel, Index
+
 class User(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
-    username: str = Field(index=True)  # Single column index
-    email: str = Field(index=True, unique=True)
+    username: str = Field(sa_column=Column(String(50), index=True, nullable=False))
+    email: str = Field(sa_column=Column(String(255), index=True, unique=True, nullable=False))
     team_id: int | None = Field(foreign_key="team.id", index=True)
 
     __table_args__ = (

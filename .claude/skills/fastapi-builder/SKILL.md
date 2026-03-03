@@ -266,6 +266,120 @@ SessionDep = Annotated[Session, Depends(get_session)]
 
 ---
 
+### Pitfall 7: Missing Input Validation on Schemas
+
+**Error**: Invalid data accepted silently — empty strings, wrong email formats, arbitrary role values, negative numbers.
+
+**Cause**: Using plain `str` or `int` types without `Field()` constraints, `EmailStr`, or `Literal` types.
+
+**MANDATORY Rules** — Apply these EVERY time you create schemas:
+
+1. **Email fields** → ALWAYS use `EmailStr` (from `pydantic`), never plain `str`
+2. **Enum-like string fields** (role, status, grade, category) → ALWAYS use `Literal["val1", "val2"]`, never plain `str`
+3. **String input fields** (name, title, description) → ALWAYS add `Field(min_length=..., max_length=...)`
+4. **Numeric input fields** (price, quantity, credit_hours) → ALWAYS add `Field(ge=..., le=...)` or `Field(gt=...)`
+5. **Password fields** → ALWAYS add `Field(min_length=8, max_length=128)`
+
+**Bad — No validation:**
+```python
+# ❌ WRONG - Accepts any garbage input
+class UserCreate(SQLModel):
+    username: str              # empty string accepted
+    email: str                 # "notanemail" accepted
+    password: str              # "1" accepted
+    role: str = "student"      # "god" accepted
+
+class EnrollmentUpdate(SQLModel):
+    grade: str | None = None   # "ZZZZZ" accepted
+    status: str | None = None  # "banana" accepted
+
+class CourseCreate(SQLModel):
+    title: str                 # empty string accepted
+    credit_hours: int = 3      # -999 accepted
+    max_students: int = 30     # 0 accepted
+```
+
+**Good — Proper validation:**
+```python
+# ✅ CORRECT - Strict validation at schema level
+from typing import Literal
+from pydantic import EmailStr
+from sqlmodel import Field, SQLModel
+
+Role = Literal["admin", "student"]
+EnrollmentStatus = Literal["enrolled", "completed", "dropped"]
+Grade = Literal["A+", "A", "A-", "B+", "B", "B-", "C+", "C", "C-", "D", "F"]
+
+class UserCreate(SQLModel):
+    username: str = Field(min_length=3, max_length=50)
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=128)
+    role: Role = "student"
+
+class EnrollmentUpdate(SQLModel):
+    grade: Grade | None = None
+    status: EnrollmentStatus | None = None
+
+class CourseCreate(SQLModel):
+    title: str = Field(min_length=1, max_length=200)
+    credit_hours: int = Field(default=3, ge=1, le=12)
+    max_students: int = Field(default=30, ge=1, le=500)
+```
+
+**Why this matters**: Without these constraints, invalid data silently enters your database. FastAPI only auto-validates types — it does NOT check format, length, or allowed values unless you specify constraints.
+
+**Import rule**: ALWAYS import `Field` from `sqlmodel`, not from `pydantic`. `sqlmodel.Field` is a superset — it supports all Pydantic validation args (`min_length`, `ge`, `gt`, etc.) PLUS DB-specific ones (`primary_key`, `foreign_key`, `index`, `unique`). Only import `EmailStr` from `pydantic`.
+
+---
+
+### Pitfall 8: Missing sa_column on Table Models
+
+**Error**: Unlimited TEXT columns in PostgreSQL — no DB-level length constraints. Data bypassing the API (migrations, admin panels, other services) can insert invalid data.
+
+**Cause**: Using `Field(index=True)` without `sa_column=Column(...)` on string fields in `table=True` models.
+
+**MANDATORY Rule** — For `table=True` models, ALWAYS use `sa_column=Column(...)` on string fields to enforce DB-level constraints:
+
+**Bad — No DB-level constraints:**
+```python
+# ❌ WRONG - Creates unlimited TEXT columns in PostgreSQL
+class User(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    username: str = Field(unique=True, index=True)      # TEXT (unlimited)
+    email: str = Field(unique=True, index=True)          # TEXT (unlimited)
+    hashed_password: str                                  # TEXT (unlimited)
+    role: str = Field(default="student")                  # TEXT (unlimited)
+```
+
+**Good — Proper DB-level constraints:**
+```python
+# ✅ CORRECT - VARCHAR with explicit length at DB level
+from sqlalchemy import Column, String
+from sqlmodel import Field, SQLModel
+
+class User(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    username: str = Field(sa_column=Column(String(50), unique=True, index=True, nullable=False))
+    email: str = Field(sa_column=Column(String(255), unique=True, index=True, nullable=False))
+    hashed_password: str = Field(sa_column=Column(String(1024), nullable=False))
+    role: str = Field(sa_column=Column(String(10), nullable=False, server_default="student"))
+```
+
+**When to use `sa_column`**:
+- ALL string fields on `table=True` models (use `String(N)` for bounded, `Text` for unbounded like descriptions)
+- Integer fields that need `server_default` (use `Column(Integer, server_default="3")`)
+- Any field that needs DB-level constraints beyond what `Field()` provides
+
+**When NOT to use `sa_column`**:
+- Schema models (no `table=True`) — use `Field(min_length, max_length)` instead
+- `id` fields — `Field(default=None, primary_key=True)` is fine
+- Foreign key fields — `Field(foreign_key="table.id")` is fine
+- Date/datetime fields — `Field(default_factory=...)` is fine
+
+**Two-layer protection pattern**: Schema validates at API level, `sa_column` enforces at DB level. Both are mandatory.
+
+---
+
 ## Implementation Workflow (After Setup)
 
 ### 1. Determine Project Scale
@@ -369,13 +483,13 @@ See `references/patterns.md` for comprehensive decision guides.
 
 ```python
 from fastapi import FastAPI, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 app = FastAPI()
 
 class Item(BaseModel):
-    name: str
-    price: float
+    name: str = Field(min_length=1, max_length=100)
+    price: float = Field(gt=0)
     description: str | None = None
 
 @app.get("/items/{item_id}")
@@ -429,22 +543,23 @@ See `references/dependency-injection.md` for advanced patterns.
 ### Model Definition
 
 ```python
-from sqlmodel import Field, SQLModel
 from datetime import datetime
+from sqlalchemy import Column, String
+from sqlmodel import Field, SQLModel
 
-# Table model (database)
+# Table model (database) — ALWAYS use sa_column for string fields
 class Hero(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
-    name: str = Field(index=True)
-    secret_name: str
+    name: str = Field(sa_column=Column(String(100), index=True, nullable=False))
+    secret_name: str = Field(sa_column=Column(String(100), nullable=False))
     age: int | None = Field(default=None, index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
-# API models (separate concerns)
+# API models (separate concerns) — ALWAYS add Field constraints
 class HeroCreate(SQLModel):
-    name: str
-    secret_name: str
-    age: int | None = None
+    name: str = Field(min_length=1, max_length=100)
+    secret_name: str = Field(min_length=1, max_length=100)
+    age: int | None = Field(default=None, ge=0, le=150)
 
 class HeroPublic(SQLModel):
     id: int
@@ -511,7 +626,8 @@ from typing import Annotated
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
-from passlib.context import CryptContext
+from pwdlib import PasswordHash
+from pwdlib.hashers.argon2 import Argon2Hasher
 from pydantic import ConfigDict
 from pydantic_settings import BaseSettings
 
@@ -523,7 +639,7 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+password_hash = PasswordHash((Argon2Hasher(),))
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 ```
 
@@ -604,8 +720,8 @@ See `references/testing.md` for authentication testing, fixtures, and coverage.
 - [ ] Use environment variables for secrets (never hardcode)
 - [ ] Enable HTTPS redirect middleware
 - [ ] Configure CORS with explicit origins (not `["*"]`)
-- [ ] Hash passwords with bcrypt/argon2
-- [ ] Validate and sanitize all inputs
+- [ ] Hash passwords with pwdlib[argon2]
+- [ ] Validate all inputs: EmailStr for emails, Literal for enum-like fields, Field(min/max) for strings/numbers
 - [ ] Use response_model to prevent data leaks
 - [ ] Implement rate limiting for auth endpoints
 - [ ] Add request size limits
@@ -702,6 +818,13 @@ Before marking implementation complete:
 ### Code Quality
 - [ ] Type hints on all functions
 - [ ] Pydantic/SQLModel models for validation
+- [ ] `Field` imported from `sqlmodel` (not `pydantic`) in all files
+- [ ] EmailStr on all email fields (never plain str)
+- [ ] Literal types on all enum-like string fields (role, status, grade, category)
+- [ ] Field(min_length, max_length) on all string input fields in schemas
+- [ ] Field(ge, le) or Field(gt) on all numeric input fields in schemas
+- [ ] `sa_column=Column(String(N))` on all string fields in table models
+- [ ] `server_default` on columns with default values in table models
 - [ ] Error handling for edge cases
 - [ ] No hardcoded secrets or credentials
 - [ ] Async/sync used appropriately

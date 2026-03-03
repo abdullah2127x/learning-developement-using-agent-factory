@@ -10,7 +10,7 @@ FastAPI's security system is built on OAuth2 with Password (and Bearer) flows. J
 - **OAuth2PasswordBearer**: Token extraction from Authorization header
 - **OAuth2PasswordRequestForm**: Login form data (username/password)
 - **JWT**: Token generation and validation
-- **Passlib**: Password hashing (bcrypt/argon2)
+- **pwdlib**: Password hashing (Argon2)
 - **Security**: Dependency with scope support
 
 ---
@@ -19,9 +19,7 @@ FastAPI's security system is built on OAuth2 with Password (and Bearer) flows. J
 
 ```bash
 pip install "python-jose[cryptography]"  # JWT encoding/decoding
-pip install "passlib[bcrypt]"            # Password hashing
-# OR for better security:
-pip install argon2-cffi                  # Argon2 (recommended)
+pip install "pwdlib[argon2]"             # Password hashing (Argon2)
 ```
 
 ---
@@ -49,19 +47,16 @@ settings = Settings()
 
 ```python
 # app/core/security.py
-from passlib.context import CryptContext
+from pwdlib import PasswordHash
+from pwdlib.hashers.argon2 import Argon2Hasher
 
-# Using bcrypt (good)
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-# Using argon2 (better - recommended for production)
-# pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
+password_hash = PasswordHash((Argon2Hasher(),))
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    return password_hash.verify(plain_password, hashed_password)
 
 def get_password_hash(password: str) -> str:
-    return pwd_context.hash(password)
+    return password_hash.hash(password)
 ```
 
 ### JWT Token Operations
@@ -95,37 +90,44 @@ def decode_access_token(token: str) -> dict | None:
 
 ```python
 # app/models/user.py
-from sqlmodel import Field, SQLModel
 from datetime import datetime
+from sqlalchemy import Column, String
+from sqlmodel import Field, SQLModel
 
 class User(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
-    username: str = Field(unique=True, index=True)
-    email: str = Field(unique=True, index=True)
-    hashed_password: str
+    username: str = Field(sa_column=Column(String(50), unique=True, index=True, nullable=False))
+    email: str = Field(sa_column=Column(String(255), unique=True, index=True, nullable=False))
+    hashed_password: str = Field(sa_column=Column(String(1024), nullable=False))
     is_active: bool = Field(default=True)
     is_superuser: bool = Field(default=False)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 # app/schemas/user.py
-from pydantic import BaseModel, EmailStr
+from typing import Literal
+from pydantic import EmailStr
+from sqlmodel import Field, SQLModel
 
-class UserCreate(BaseModel):
-    username: str
+Role = Literal["admin", "student"]
+
+class UserCreate(SQLModel):
+    username: str = Field(min_length=3, max_length=50)
     email: EmailStr
-    password: str
+    password: str = Field(min_length=8, max_length=128)
+    role: Role = "student"
 
-class UserPublic(BaseModel):
+class UserPublic(SQLModel):
     id: int
     username: str
     email: str
+    role: Role
     is_active: bool
 
-class Token(BaseModel):
+class Token(SQLModel):
     access_token: str
     token_type: str
 
-class TokenData(BaseModel):
+class TokenData(SQLModel):
     username: str | None = None
 ```
 
@@ -406,7 +408,7 @@ For longer sessions, implement refresh tokens.
 ```python
 class RefreshToken(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
-    token: str = Field(unique=True, index=True)
+    token: str = Field(sa_column=Column(String(255), unique=True, index=True, nullable=False))
     user_id: int = Field(foreign_key="user.id")
     expires_at: datetime
     created_at: datetime = Field(default_factory=datetime.utcnow)
