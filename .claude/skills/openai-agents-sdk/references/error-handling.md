@@ -319,6 +319,65 @@ if errors:
 
 ---
 
+## MCP-Specific Error Handling
+
+MCP servers introduce additional failure points beyond regular tools. See `references/mcp-tracing.md`
+for full MCP setup details.
+
+### MCP Connection Failures
+
+```python
+from agents.mcp import MCPServerStdio, MCPServerManager
+from mcp.shared.exceptions import McpError
+
+# ── Option 1: try/except for single server ──
+server = MCPServerStdio(
+    name="Context7",
+    params={"command": "npx", "args": ["-y", "@upstash/context7-mcp@latest"]},
+    client_session_timeout_seconds=30,  # increase for npx cold starts
+)
+
+try:
+    async with server:
+        agent = Agent(mcp_servers=[server])
+        result = await Runner.run(agent, input)
+except McpError as e:
+    # Server failed to connect — run without MCP
+    print(f"MCP unavailable: {e}")
+    agent = Agent(tools=[local_fallback])
+    result = await Runner.run(agent, input)
+
+
+# ── Option 2: MCPServerManager for graceful degradation (recommended) ──
+async with MCPServerManager([server_a, server_b]) as manager:
+    # manager.active_servers has only the ones that connected
+    agent = Agent(mcp_servers=manager.active_servers)
+```
+
+### MCP Tool Call Failures at Runtime
+
+After connection, individual tool calls can still fail. Use `failure_error_function`:
+
+```python
+server = MCPServerStdio(
+    ...,
+    failure_error_function=lambda tool, err: f"Tool '{tool}' unavailable: {err}",
+    # Set to None to raise exceptions instead of converting to error messages
+)
+```
+
+### Common MCP Errors
+
+| Error | Cause | Fix |
+|-------|-------|-----|
+| `McpError: Timed out while waiting for response` | `client_session_timeout_seconds` too low | Increase to 30s for npx cold starts |
+| `Server not initialized. Call connect() first` | Missing `async with` around MCP server | Wrap in `async with server:` or use `MCPServerManager` |
+| npx hangs forever | Missing `-y` flag in args | Add `"-y"` to npx args |
+| `RuntimeError: Event loop is closed` (Windows) | Missing event loop policy | Add `asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())` |
+| `FileNotFoundError: npx not found` | Node.js/npm not installed | Install Node.js |
+
+---
+
 ## Error Codes Reference
 
 | Code | Meaning | Recovery |
@@ -328,3 +387,5 @@ if errors:
 | `VALIDATION_ERROR` | Output doesn't match schema | Agent retries automatically |
 | `TOOL_ERROR` | Tool function failed | Agent tries different approach |
 | `NETWORK_ERROR` | Can't reach external API | Retry with backoff |
+| `MCP_CONNECTION` | MCP server failed to connect | Check timeout, npx, server URL |
+| `MCP_TOOL_FAILURE` | MCP tool call failed at runtime | Agent sees error, tries alternative |
