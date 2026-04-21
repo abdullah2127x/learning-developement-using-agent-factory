@@ -18,7 +18,13 @@
       "Bash(mkdir:*)",
       "WebFetch(domain:how2.sh)",
       "WebFetch(domain:jose.authlib.org)",
-      "WebFetch(domain:www.reddit.com)"
+      "WebFetch(domain:www.reddit.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:openai.github.io)",
+      "WebFetch(domain:neon.com)",
+      "mcp__github__search_code",
+      "WebFetch(domain:medium.com)"
     ]
   }
 }

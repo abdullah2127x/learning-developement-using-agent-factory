@@ -135,17 +135,46 @@ If using Neon or cloud PostgreSQL, ensure URL format:
 postgresql+psycopg://user:password@host:5432/dbname?sslmode=require
 ```
 
+### 5. ALWAYS Include psycopg[binary] in Dependencies (MANDATORY)
+
+**CRITICAL**: When creating ANY FastAPI project with database support, ALWAYS include `psycopg[binary]` in the project dependencies — even if the initial `.env` uses SQLite. Users frequently switch to PostgreSQL (Neon, Supabase, local Postgres) after project creation.
+
+**Error if missing**: `ModuleNotFoundError: No module named 'psycopg2'` or `No module named 'psycopg'`
+
+**pyproject.toml** — ALWAYS include:
+```toml
+dependencies = [
+    "fastapi[standard]>=0.115.0",
+    "sqlmodel>=0.0.22",
+    "pydantic-settings>=2.6.0",
+    "uvicorn[standard]>=0.32.0",
+    "psycopg[binary]>=3.2.0",      # ALWAYS include — PostgreSQL driver
+]
+```
+
+**requirements.txt** — ALWAYS include:
+```
+fastapi[standard]>=0.115.0
+sqlmodel>=0.0.22
+pydantic-settings>=2.6.0
+uvicorn[standard]>=0.32.0
+psycopg[binary]>=3.2.0            # ALWAYS include — PostgreSQL driver
+```
+
+**Why always**: The cost of including it (~5MB) is negligible. The cost of NOT including it (broken app, user frustration, debugging time) is high. Users switch databases frequently, and this prevents the #1 recurring error with this skill.
+
 ### Pre-Implementation Checklist
 
 Before writing ANY code:
 
 - [ ] Environment synced (`uv sync` if applicable)
 - [ ] Python 3.12+ installed
+- [ ] `psycopg[binary]` included in dependencies (MANDATORY — even for SQLite projects)
 - [ ] `.env` file created with required variables (DATABASE_URL, DEBUG, etc.)
 - [ ] Testing environment set up (pytest installed, TestClient available)
 - [ ] Pydantic v2 ConfigDict pattern understood (for Settings/BaseModel)
 - [ ] If Windows development: No Unicode in CLI scripts planned
-- [ ] If using PostgreSQL: psycopg (not psycopg2) configured
+- [ ] If using PostgreSQL: URL uses `postgresql+psycopg://` format (not `postgresql://`)
 
 ---
 
@@ -201,14 +230,24 @@ uv sync
 
 ---
 
-### Pitfall 4: Incorrect Database URL Format
+### Pitfall 4: Incorrect Database URL Format / Missing psycopg Driver
 
-**Error**: `sqlalchemy.exc.ArgumentError: Invalid database URL`
+**Error**: `ModuleNotFoundError: No module named 'psycopg2'` or `sqlalchemy.exc.ArgumentError: Invalid database URL`
 
-**Cause**: Using old psycopg2 driver syntax instead of psycopg
+**Cause**: Missing `psycopg[binary]` in dependencies AND/OR using old psycopg2 driver syntax
 
-**Fix**: Use `postgresql+psycopg://` not `postgresql://`
+**Fix (two steps)**:
 
+**Step 1**: ALWAYS include `psycopg[binary]` in project dependencies:
+```toml
+# pyproject.toml
+dependencies = [
+    ...
+    "psycopg[binary]>=3.2.0",  # ALWAYS include
+]
+```
+
+**Step 2**: Use `postgresql+psycopg://` not `postgresql://`:
 ```python
 # ✅ Correct — feed from settings, never hardcode the URL
 engine = create_engine(
@@ -402,7 +441,7 @@ Execute in order based on project scale:
 ```
 Phase 1: Project Setup
   → Create directory structure
-  → Initialize pyproject.toml/requirements.txt
+  → Initialize pyproject.toml/requirements.txt (MUST include psycopg[binary])
   → Set up main FastAPI app
 
 Phase 2: Core Features

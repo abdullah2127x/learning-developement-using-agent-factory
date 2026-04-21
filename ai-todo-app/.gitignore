@@ -1,0 +1,14 @@
+# Virtual environment
+.venv/
+
+# Environment variables (contains secrets)
+.env
+
+# Python
+__pycache__/
+*.pyc
+
+# Agent session database (and SQLite WAL files)
+*.db
+*.db-shm
+*.db-wal

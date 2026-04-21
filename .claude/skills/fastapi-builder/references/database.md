@@ -14,8 +14,21 @@ Complete database integration guide for FastAPI with SQLModel, async support, mi
 
 ## Installation
 
+**MANDATORY**: ALWAYS include `psycopg[binary]` in project dependencies — even for SQLite projects. Users frequently switch to PostgreSQL after project creation.
+
+```toml
+# pyproject.toml — ALWAYS include psycopg[binary]
+dependencies = [
+    "fastapi[standard]>=0.115.0",
+    "sqlmodel>=0.0.22",
+    "pydantic-settings>=2.6.0",
+    "uvicorn[standard]>=0.32.0",
+    "psycopg[binary]>=3.2.0",      # ALWAYS include — prevents ModuleNotFoundError
+]
+```
+
 ```bash
-# Sync PostgreSQL (psycopg3)
+# Or via pip/uv:
 pip install sqlmodel psycopg[binary]
 
 # Async PostgreSQL (recommended for production)

@@ -1,0 +1,7 @@
+2026-04-02 05:51:09 - practice - ERROR - Division by zero happened
+2026-04-02 05:51:09 - practice - ERROR - Division by zero happened
+Traceback (most recent call last):
+  File "D:\AbdullahQureshi\workspace\Agent_Factory\fastapi\practice.py", line 14, in <module>
+    1 / 0
+    ~~^~~
+ZeroDivisionError: division by zero

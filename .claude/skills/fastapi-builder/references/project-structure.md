@@ -31,6 +31,9 @@ async def read_item(item_id: int, q: str | None = None):
 **requirements.txt**:
 ```
 fastapi[standard]>=0.115.0
+sqlmodel>=0.0.22
+pydantic-settings>=2.6.0
+psycopg[binary]>=3.2.0
 ```
 
 **Run**:
