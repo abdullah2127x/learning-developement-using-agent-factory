@@ -1,0 +1,19 @@
+[project]
+name = "learning-auth"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "argon2-cffi>=23.1.0",
+    "bcrypt>=4.2.0",
+    "fastapi[standard]>=0.135.3",
+    "passlib[bcrypt]>=1.7.4",
+    "pydantic[email]>=2.10.0",
+    "pydantic-settings>=2.7.0",
+    "pyjwt[crypto]>=2.12.1",
+    "sqlmodel>=0.0.38",
+    "psycopg[binary]>=3.2.0",
+    "slowapi>=0.1.9",
+    "psycopg2>=2.9.12",
+]
